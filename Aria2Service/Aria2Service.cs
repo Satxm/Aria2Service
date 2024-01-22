@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.ServiceProcess;
@@ -175,7 +176,6 @@ namespace Aria2Service
 
         #endregion
 
-
         public static bool StartProcess(String cmd, String arg, String dir, out Process_Information pi)
         {
             //登陆进程的id
@@ -235,7 +235,7 @@ namespace Aria2Service
             si.lpDesktop = @"winsta0\default";
 
             // 指定进程的优先级和创建方法的标志
-            //int dwCreationFlags = NORMAL_PRIORITY_CLASS | CREATE_NEW_CONSOLE;
+            // dwCreationFlags = NORMAL_PRIORITY_CLASS | CREATE_NEW_CONSOLE;
 
             // 进程在没有控制台窗口的情况下运行
             int dwCreationFlags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW;
@@ -262,6 +262,27 @@ namespace Aria2Service
             return result; // 返回结果
         }
 
+        // 结束进程树
+        public static void KillProcessAndChildren(int pid)
+        {
+            ManagementObjectSearcher searcher = new ManagementObjectSearcher("Select * From Win32_Process Where ParentProcessID=" + pid);
+            ManagementObjectCollection moc = searcher.Get();
+            foreach (ManagementObject mo in moc)
+            {
+                KillProcessAndChildren(Convert.ToInt32(mo["ProcessID"]));
+            }
+            try
+            {
+                Process proc = Process.GetProcessById(pid);
+                Console.WriteLine(pid);
+                proc.Kill();
+            }
+            catch (ArgumentException)
+            {
+                /* process already exited */
+            }
+        }
+
         // 服务启动执行
         protected override void OnStart(string[] args)
         {
@@ -284,11 +305,8 @@ namespace Aria2Service
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOP_PENDING;
             serviceStatus.dwWaitHint = 100000;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
-            try
-            {
-                Process.GetProcessById((int)pi.dwProcessId).Kill();
-            }
-            catch { }
+
+            KillProcessAndChildren((int)pi.dwProcessId);
 
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOPPED;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
